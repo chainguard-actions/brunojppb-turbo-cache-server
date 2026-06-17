@@ -1,0 +1,28 @@
+name: Test default port
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server with default port
+        id: action
+        uses: .
+        env:
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "test-access-key"
+          S3_SECRET_KEY: "test-secret-key"
+
+      - name: Assert server is healthy on default port 8000
+        run: |
+          echo "Checking server health at http://127.0.0.1:8000/management/health"
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/management/health || echo "000")
+          echo "HTTP response code: $response"
+          if [ "$response" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint on default port 8000, got $response"
+            exit 1
+          fi
+          echo "PASS: server is healthy on default port 8000"
