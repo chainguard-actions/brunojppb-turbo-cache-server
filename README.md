@@ -13,6 +13,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | 4.0.6 | [`4.0.6`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.6) | [`91a5f07`](https://github.com/brunojppb/turbo-cache-server/commit/91a5f07e930b24dbbb8d2468b86662dc1ac19d6a) |
 | 4.0.7 | [`4.0.7`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.7) | [`1fab887`](https://github.com/brunojppb/turbo-cache-server/commit/1fab88733a4d4bda5e3aa5c0079636a37696b1fe) |
 | 4.0.8 | [`4.0.8`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.8) | [`54dea55`](https://github.com/brunojppb/turbo-cache-server/commit/54dea557e25e9702d03960afaa627858e0286559) |
+| 4.0.9 | [`4.0.9`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.9) | [`72a2719`](https://github.com/brunojppb/turbo-cache-server/commit/72a271963c4b6ba4895bf8586a296e8e00cbac7d) |
 
 ## Privacy
 
