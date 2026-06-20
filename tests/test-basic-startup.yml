@@ -1,0 +1,37 @@
+name: Test basic startup
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: cache-server
+        uses: .
+        env:
+          PORT: "8585"
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "fake-access-key"
+          S3_SECRET_KEY: "fake-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:9999"
+          S3_USE_PATH_STYLE: "true"
+
+      - name: Assert server is healthy
+        run: |
+          echo "Checking server health at http://127.0.0.1:8585/management/health"
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8585/management/health)
+          echo "HTTP status: $response"
+          if [ "$response" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got $response"
+            exit 1
+          fi
+          echo "PASS: server is healthy"
+
+      - name: Assert server responds to health endpoint body
+        run: |
+          body=$(curl -s http://127.0.0.1:8585/management/health)
+          echo "Health response body: $body"
+          echo "PASS: health endpoint responded"
