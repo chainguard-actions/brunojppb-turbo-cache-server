@@ -1,0 +1,44 @@
+name: Test basic server startup
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PORT: "8585"
+      HOST: "127.0.0.1"
+      S3_BUCKET_NAME: "test-bucket"
+      S3_REGION: "us-east-1"
+      # Fake credentials so the server doesn't panic trying to load default AWS creds
+      S3_ACCESS_KEY: "fakeaccesskey"
+      S3_SECRET_KEY: "fakesecretkey"
+      # Point to a local non-existent endpoint so S3 ops fail fast (not real AWS)
+      S3_ENDPOINT: "http://127.0.0.1:19999"
+      S3_USE_PATH_STYLE: "true"
+      OTEL_SDK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: cache-server
+        uses: .
+
+      - name: Assert server is running and health endpoint responds
+        run: |
+          echo "Checking health endpoint at http://127.0.0.1:8585/management/health"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8585/management/health || echo "000")
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got $HTTP_STATUS"
+            exit 1
+          fi
+          echo "PASS: server is healthy"
+
+      - name: Assert server process is running
+        run: |
+          echo "Checking that a decay server process is running"
+          if ! pgrep -f "decay" > /dev/null 2>&1; then
+            echo "FAIL: no decay server process found"
+            exit 1
+          fi
+          echo "PASS: decay server process is running"

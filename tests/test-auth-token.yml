@@ -1,0 +1,70 @@
+name: Test server authentication with TURBO_TOKEN
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PORT: "8787"
+      HOST: "127.0.0.1"
+      S3_BUCKET_NAME: "test-bucket"
+      S3_REGION: "us-east-1"
+      # Fake credentials so the server doesn't panic trying to load default AWS creds
+      S3_ACCESS_KEY: "fakeaccesskey"
+      S3_SECRET_KEY: "fakesecretkey"
+      # Point to a local non-existent endpoint so S3 ops fail fast (not real AWS)
+      S3_ENDPOINT: "http://127.0.0.1:19999"
+      S3_USE_PATH_STYLE: "true"
+      # Enable authentication by setting TURBO_TOKEN on the server
+      TURBO_TOKEN: "secret-test-token"
+      OTEL_SDK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server with authentication enabled
+        id: cache-server
+        uses: .
+
+      - name: Assert health endpoint still responds without auth
+        run: |
+          echo "Checking health endpoint (should not require auth)"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8787/management/health || echo "000")
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got $HTTP_STATUS"
+            exit 1
+          fi
+          echo "PASS: health endpoint returns 200 without auth"
+
+      - name: Assert request without token is rejected with 401
+        run: |
+          echo "Checking that request without token is rejected"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            http://127.0.0.1:8787/v8/artifacts/test-hash || echo "000")
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "000" ]; then
+            echo "FAIL: could not connect to server"
+            exit 1
+          fi
+          if [ "$HTTP_STATUS" != "401" ]; then
+            echo "FAIL: expected HTTP 401 for unauthenticated request, got $HTTP_STATUS"
+            exit 1
+          fi
+          echo "PASS: unauthenticated request correctly rejected with 401"
+
+      - name: Assert request with correct token is accepted (not 401)
+        run: |
+          echo "Checking that request with correct token is accepted"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer secret-test-token" \
+            http://127.0.0.1:8787/v8/artifacts/test-hash || echo "000")
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "000" ]; then
+            echo "FAIL: could not connect to server"
+            exit 1
+          fi
+          if [ "$HTTP_STATUS" = "401" ]; then
+            echo "FAIL: request with correct token was rejected with 401"
+            exit 1
+          fi
+          echo "PASS: authenticated request accepted (status: $HTTP_STATUS)"
