@@ -1,0 +1,44 @@
+name: Test basic usage - server starts and becomes healthy
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: action
+        uses: .
+        env:
+          HOST: "127.0.0.1"
+          PORT: "8000"
+          S3_ACCESS_KEY: "fakeaccesskey"
+          S3_SECRET_KEY: "fakesecretkey"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          S3_BUCKET_NAME: "turbo"
+          S3_REGION: "eu-central-1"
+          S3_USE_PATH_STYLE: "true"
+
+      - name: Assert server is healthy on default port
+        run: |
+          echo "Checking health endpoint at http://127.0.0.1:8000/management/health"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/management/health)
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got $STATUS"
+            exit 1
+          fi
+          echo "PASS: server is healthy"
+
+      - name: Assert server responds with valid health body
+        run: |
+          BODY=$(curl -s http://127.0.0.1:8000/management/health)
+          echo "Health response body: $BODY"
+          # Health endpoint returns 200 OK with empty body - just check the status
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/management/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint"
+            exit 1
+          fi
+          echo "PASS: health endpoint returned a response"

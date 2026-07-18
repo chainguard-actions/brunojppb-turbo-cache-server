@@ -8,45 +8,73 @@
 
 **Test Policy SHA:** `843adf9e4b8f85d0c08b27b9d0b09dd094b54702`
 
-**Harden Agent Version:** `1`
+**Harden Agent Version:** `2`
 
-Action **brunojppb--turbo-cache-server/4.0.10** was hardened automatically. 4 finding(s) were identified and resolved across 1 iteration(s).
+Action **brunojppb--turbo-cache-server/4.0.10** was hardened automatically. 5 finding(s) were identified and resolved across 1 iteration(s).
 
 ## Findings Fixed
 
-### unpinned-uses (severity: high)
+### script-injection (severity: high)
 
-Multiple workflow files use action references pinned to mutable version tags instead of immutable 40-character commit SHAs, making them vulnerable to supply-chain attacks. Affected references include: actions/checkout@v7, docker/setup-buildx-action@v4, docker/login-action@v4, actions/upload-artifact@v7, actions/download-artifact@v8, actions-rust-lang/setup-rust-toolchain@v1, actions-rust-lang/rustfmt@v1, docker/setup-buildx-action@v4.2.0.
+Direct ${{ }} expression interpolation inside run: shell command strings. In build-binaries.yml, ${{ inputs.version }} and ${{ inputs.cache-ref }} are interpolated directly into docker commands (e.g., `--tag brunojppb/turbo-cache-server-build:${{ inputs.version }}`), and ${{ inputs.version }} is interpolated into a sed command (`sed -i "s/^version = \".*\"/version = \"${{ inputs.version }}\"/" Cargo.toml`). In release.yml, ${{ github.event.inputs.semver }} is interpolated directly into a sed run: command, and ${{ github.repository }} is interpolated directly into an echo command inside a run: block. These template substitutions happen before the shell processes the string, enabling command injection by a malicious input value.
 
 Locations:
 
-- `.github/workflows/build-binaries.yml:26`
-- `.github/workflows/build-binaries.yml:29`
-- `.github/workflows/build-binaries.yml:37`
-- `.github/workflows/build-binaries.yml:68`
-- `.github/workflows/build-binaries.yml:71`
+- `.github/workflows/build-binaries.yml:33`
+- `.github/workflows/build-binaries.yml:47`
+- `.github/workflows/build-binaries.yml:52`
+- `.github/workflows/build-binaries.yml:53`
+- `.github/workflows/build-binaries.yml:75`
+- `.github/workflows/build-binaries.yml:96`
+- `.github/workflows/release.yml:36`
+- `.github/workflows/release.yml:100`
+- `.github/workflows/release.yml:113`
+
+### unpinned-uses (severity: high)
+
+All uses: references across all workflow files use mutable tag-based refs instead of pinned 40-character SHA digests, making the workflows vulnerable to supply-chain attacks if any referenced action is compromised or its tag is moved. Unpinned references include: actions/checkout@v7, docker/setup-buildx-action@v4, docker/login-action@v4, actions/upload-artifact@v7, actions/download-artifact@v8, actions-rust-lang/setup-rust-toolchain@v1, actions-rust-lang/rustfmt@v1, docker/setup-buildx-action@v4.2.0.
+
+Locations:
+
+- `.github/workflows/build-binaries.yml:24`
+- `.github/workflows/build-binaries.yml:27`
+- `.github/workflows/build-binaries.yml:30`
+- `.github/workflows/build-binaries.yml:64`
+- `.github/workflows/build-binaries.yml:67`
+- `.github/workflows/build-binaries.yml:70`
+- `.github/workflows/build-binaries.yml:85`
 - `.github/workflows/build.yml:14`
-- `.github/workflows/build.yml:19`
-- `.github/workflows/ci.yml:13`
+- `.github/workflows/build.yml:22`
+- `.github/workflows/ci.yml:12`
 - `.github/workflows/ci.yml:14`
 - `.github/workflows/ci.yml:15`
-- `.github/workflows/release.yml:43`
-- `.github/workflows/release.yml:52`
-- `.github/workflows/release.yml:64`
-- `.github/workflows/release.yml:67`
-- `.github/workflows/release.yml:73`
+- `.github/workflows/ci.yml:22`
+- `.github/workflows/ci.yml:23`
+- `.github/workflows/release.yml:26`
+- `.github/workflows/release.yml:44`
+- `.github/workflows/release.yml:56`
+- `.github/workflows/release.yml:61`
+- `.github/workflows/release.yml:66`
+
+### hardcoded-credentials (severity: high)
+
+ci.yml contains literal hardcoded credential values: `S3_ACCESS_KEY: some-access-key` and `S3_SECRET_KEY: some-secret-key`. Even if these are placeholder/test values, they match the hardcoded-credentials pattern and should be replaced with GitHub Actions secret expressions (e.g., ${{ secrets.S3_ACCESS_KEY }}).
+
+Locations:
+
+- `.github/workflows/ci.yml:33`
 
 ### broad-permissions (severity: medium)
 
-release.yml sets top-level permissions to 'write-all', granting overly broad write access to all GitHub API scopes. This should be replaced with specific minimal permissions required by each job.
+release.yml has a top-level `permissions: "write-all"` setting, which grants overly broad write access to all GitHub API scopes. This should be replaced with specific minimal permissions (e.g., contents: write, packages: write) required by the workflow.
 
 Locations:
 
-- `.github/workflows/release.yml:14`
+- `.github/workflows/release.yml:13`
 
 ### missing-permissions (severity: medium)
 
-Three workflow files have no top-level permissions block and no job-level permissions blocks. Without explicit permissions, workflows inherit the repository's default token permissions, which may be broader than necessary.
+build-binaries.yml, build.yml, and ci.yml have no top-level permissions: key and no job-level permissions: blocks on any of their jobs. Without explicit permissions, workflows inherit the default repository permissions, which may be overly broad. Explicit minimal permissions should be declared.
 
 Locations:
 
@@ -54,59 +82,30 @@ Locations:
 - `.github/workflows/build.yml:1`
 - `.github/workflows/ci.yml:1`
 
-### script-injection (severity: high)
-
-Multiple run: blocks directly interpolate ${{ }} expressions into shell commands (rule a), and several use unquoted shell variable expansions of user-controlled data (rule b).
-
-(a) Direct expression interpolation in run: blocks:
-- build-binaries.yml line 34: `sed -i "s/^version = \".*\"/version = \"${{ inputs.version }}\"/" Cargo.toml` — ${{ inputs.version }} injected directly into shell
-- build-binaries.yml line 52: `docker buildx build ... --tag brunojppb/turbo-cache-server-build:${{ inputs.version }} ... --cache-to type=registry,ref=brunojppb/turbo-cache-server-build:${{ inputs.cache-ref }}` — both inputs injected directly
-- build-binaries.yml lines 56-58: `docker pull/create ... brunojppb/turbo-cache-server-build:${{ inputs.version }}` — input injected directly
-- build-binaries.yml line 76 (macOS job): same sed pattern with ${{ inputs.version }}
-- release.yml line 49: `sed -i "s/^version = \".*\"/version = \"${{ github.event.inputs.semver }}\"/" Cargo.toml`
-- release.yml line 118: `echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/...` in run: block
-- release.yml line 126: `DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/...` in run: block
-
-(b) Unquoted shell variable expansions of user-controlled data:
-- release.yml line 88: `--tag ghcr.io/brunojppb/turbo-cache-server:$CACHE_SERVER_VERSION` (CACHE_SERVER_VERSION holds ${{ github.event.inputs.semver }})
-- release.yml line 100: `git tag -a ${CACHE_SERVER_VERSION} -m "Release ${CACHE_SERVER_VERSION}"` — unquoted
-- release.yml line 105: `git push origin $CACHE_SERVER_VERSION` — unquoted
-
-Locations:
-
-- `.github/workflows/build-binaries.yml:34`
-- `.github/workflows/build-binaries.yml:52`
-- `.github/workflows/build-binaries.yml:56`
-- `.github/workflows/build-binaries.yml:76`
-- `.github/workflows/release.yml:49`
-- `.github/workflows/release.yml:88`
-- `.github/workflows/release.yml:100`
-- `.github/workflows/release.yml:105`
-- `.github/workflows/release.yml:118`
-- `.github/workflows/release.yml:126`
-
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** unpinned-uses, broad-permissions, missing-permissions, script-injection
+**Fixes applied:** script-injection, unpinned-uses, hardcoded-credentials, broad-permissions, missing-permissions
 
 **Notes:**
 
-Fixed all four findings across four workflow files:
+Fixed all 5 findings across 4 workflow files:
 
-1. **unpinned-uses**: Pinned all action references to full 40-character commit SHAs with tag comments:
-   - actions/checkout@v7 → @9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-   - docker/setup-buildx-action@v4 / @v4.2.0 → @bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4 / # v4.2.0
-   - docker/login-action@v4 → @af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
-   - actions/upload-artifact@v7 → @043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-   - actions/download-artifact@v8 → @3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-   - actions-rust-lang/setup-rust-toolchain@v1 → @166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
-   - actions-rust-lang/rustfmt@v1 → @4066006ec54a31931b9b1fddfd38f2fdf2d27143 # v1
+1. **script-injection** (build-binaries.yml, release.yml): Moved all ${{ inputs.version }}, ${{ inputs.cache-ref }}, ${{ github.event.inputs.semver }}, and ${{ github.repository }} expressions out of run: shell strings into step env: blocks. Shell scripts now reference plain environment variables ($INPUT_VERSION, $INPUT_CACHE_REF, $SEMVER, $GH_REPO).
 
-2. **broad-permissions**: Replaced top-level `permissions: write-all` in release.yml with `permissions: contents: read` at top level, and job-level `permissions: contents: write, packages: write` on the release job that actually needs those permissions.
+2. **unpinned-uses** (all 4 files): Pinned all action references to full 40-char SHAs:
+   - actions/checkout@v7 → @9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+   - docker/setup-buildx-action@v4/v4.2.0 → @bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+   - docker/login-action@v4 → @af1e73f918a031802d376d3c8bbc3fe56130a9b0
+   - actions/upload-artifact@v7 → @043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+   - actions/download-artifact@v8 → @3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+   - actions-rust-lang/setup-rust-toolchain@v1 → @166cdcfd11aee3cb47222f9ddb555ce30ddb9659
+   - actions-rust-lang/rustfmt@v1 → @4066006ec54a31931b9b1fddfd38f2fdf2d27143
 
-3. **missing-permissions**: Added `permissions: contents: read` top-level blocks to build-binaries.yml, build.yml, and ci.yml.
+3. **hardcoded-credentials** (ci.yml): Replaced literal 'some-access-key' and 'some-secret-key' with ${{ secrets.S3_ACCESS_KEY }} and ${{ secrets.S3_SECRET_KEY }}.
 
-4. **script-injection**: Moved all `${{ }}` expressions out of run: blocks into env: blocks and referenced them as plain shell variables. Also quoted all shell variable expansions of user-controlled data (e.g. `"${CACHE_SERVER_VERSION}"`, `"${INPUT_VERSION}"`). Replaced `${{ github.repository }}` in release.yml with `GITHUB_REPOSITORY` env var.
+4. **broad-permissions** (release.yml): Replaced permissions: "write-all" with specific minimal permissions: contents: write, packages: write.
+
+5. **missing-permissions** (build-binaries.yml, build.yml, ci.yml): Added permissions: contents: read to all three files.
 

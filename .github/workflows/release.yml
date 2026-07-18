@@ -12,7 +12,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
+  packages: write
 
 jobs:
   sanity-check:
@@ -38,9 +39,6 @@ jobs:
     name: Release Turbo Cache Server
     needs: [build]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
 
     steps:
       - name: Checkout repository
@@ -50,9 +48,9 @@ jobs:
 
       - name: Update version on Cargo.toml
         env:
-          INPUT_SEMVER: ${{ github.event.inputs.semver }}
+          SEMVER: ${{ github.event.inputs.semver }}
         run: |
-          sed -i "s/^version = \".*\"/version = \"${INPUT_SEMVER}\"/" Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"${SEMVER}\"/" Cargo.toml
 
       - name: Download all binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -124,7 +122,7 @@ jobs:
         env:
           CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_REPO: ${{ github.repository }}
         run: |
           PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
 
@@ -138,7 +136,7 @@ jobs:
               --grep="^Release " --invert-grep >> "$NOTES_FILE"
             echo "" >> "$NOTES_FILE"
             echo "" >> "$NOTES_FILE"
-            echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${CACHE_SERVER_VERSION}" >> "$NOTES_FILE"
+            echo "**Full Changelog**: https://github.com/${GH_REPO}/compare/${PREV_TAG}...${CACHE_SERVER_VERSION}" >> "$NOTES_FILE"
           else
             git log "${CACHE_SERVER_VERSION}" \
               --pretty=format:"* %s (%h)" >> "$NOTES_FILE"
@@ -153,7 +151,7 @@ jobs:
           echo "" >> "$NOTES_FILE"
           echo "| Platform | Architecture | Asset |" >> "$NOTES_FILE"
           echo "| --- | --- | --- |" >> "$NOTES_FILE"
-          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CACHE_SERVER_VERSION}"
+          DOWNLOAD_URL="https://github.com/${GH_REPO}/releases/download/${CACHE_SERVER_VERSION}"
           echo "| Linux (musl) | x86-64 | [decay-x86_64-unknown-linux-musl](${DOWNLOAD_URL}/decay-x86_64-unknown-linux-musl) |" >> "$NOTES_FILE"
           echo "| Linux (musl) | ARM64 | [decay-aarch64-unknown-linux-musl](${DOWNLOAD_URL}/decay-aarch64-unknown-linux-musl) |" >> "$NOTES_FILE"
           echo "| macOS (universal) | Intel + Apple Silicon | [decay-universal-apple-darwin](${DOWNLOAD_URL}/decay-universal-apple-darwin) |" >> "$NOTES_FILE"
