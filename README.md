@@ -9,6 +9,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
 | 4.0.10 | [`4.0.10`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.10) | [`268744f`](https://github.com/brunojppb/turbo-cache-server/commit/268744f6ba74dc8b8ccbf03b44508809e16ca465) |
+| 4.0.12 | [`4.0.12`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.12) | [`2c9f99f`](https://github.com/brunojppb/turbo-cache-server/commit/2c9f99f491f8803c228e2044c9c3daf5d2401d0c) |
 | 4.0.3 | [`4.0.3`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.3) | [`cee8d1b`](https://github.com/brunojppb/turbo-cache-server/commit/cee8d1b4c23a71ba37df123a6fb51fd1c84385ea) |
 | 4.0.4 | [`4.0.4`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.4) | [`eaa91be`](https://github.com/brunojppb/turbo-cache-server/commit/eaa91beff4da5fb576ed1538e97e704700fe996c) |
 | 4.0.6 | [`4.0.6`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.6) | [`91a5f07`](https://github.com/brunojppb/turbo-cache-server/commit/91a5f07e930b24dbbb8d2468b86662dc1ac19d6a) |
