@@ -1,0 +1,172 @@
+name: Release new tag
+on:
+  workflow_dispatch:
+    inputs:
+      semver:
+        description: "The SemVer value used by this release"
+        type: string
+        required: true
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  sanity-check:
+    name: Branch sanity check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify main branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Releases should only run from the main branch"
+          exit 1
+
+  build:
+    needs: [sanity-check]
+    uses: ./.github/workflows/build-binaries.yml
+    with:
+      version: ${{ github.event.inputs.semver }}
+      cache-ref: "release-cache"
+    secrets:
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+
+  release:
+    name: Release Turbo Cache Server
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Update version on Cargo.toml
+        env:
+          INPUT_SEMVER: ${{ github.event.inputs.semver }}
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${INPUT_SEMVER}\"/" Cargo.toml
+
+      - name: Download all binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: action
+          pattern: "*-binaries"
+          merge-multiple: true
+
+      - name: Make binaries executable
+        run: |
+          chmod +x action/decay-arm64
+          chmod +x action/decay-x64
+          chmod +x action/decay-darwin-universal
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: login to Docker
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: brunojppb
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: login to Github Container registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read Rust version from rust-toolchain.toml
+        id: rust
+        run: |
+          raw=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)
+          safe=$(printf '%s' "$raw" | tr -d '\n\r')
+          echo "version=$safe" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+          RUST_VERSION: ${{ steps.rust.outputs.version }}
+        run: |
+          docker buildx build --build-arg RUST_VERSION="$RUST_VERSION" --platform linux/arm64,linux/amd64 --tag "ghcr.io/brunojppb/turbo-cache-server:${CACHE_SERVER_VERSION}" --tag ghcr.io/brunojppb/turbo-cache-server:latest --push .
+
+      - name: Commit new binary
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+        run: |
+          git config --global user.name "${GITHUB_ACTOR}"
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git add action/decay-arm64
+          git add action/decay-x64
+          git add action/decay-darwin-universal
+          git commit -am "Release ${CACHE_SERVER_VERSION}"
+          git tag -a "${CACHE_SERVER_VERSION}" -m "Release ${CACHE_SERVER_VERSION}"
+
+      - name: Push new tag
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+        run: git push origin "${CACHE_SERVER_VERSION}"
+
+      - name: Stage release binaries
+        run: |
+          mkdir -p release-assets
+          cp action/decay-x64 release-assets/decay-x86_64-unknown-linux-musl
+          cp action/decay-arm64 release-assets/decay-aarch64-unknown-linux-musl
+          cp action/decay-darwin-universal release-assets/decay-universal-apple-darwin
+          chmod +x release-assets/*
+          cd release-assets && sha256sum decay-* > SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          CACHE_SERVER_VERSION: ${{ github.event.inputs.semver }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
+
+          NOTES_FILE=$(mktemp)
+          echo "## What's Changed" > "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+
+          if [ -n "$PREV_TAG" ]; then
+            git log "${PREV_TAG}..${CACHE_SERVER_VERSION}" \
+              --pretty=format:"* %s (%h)" \
+              --grep="^Release " --invert-grep >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${CACHE_SERVER_VERSION}" >> "$NOTES_FILE"
+          else
+            git log "${CACHE_SERVER_VERSION}" \
+              --pretty=format:"* %s (%h)" >> "$NOTES_FILE"
+          fi
+
+          echo "" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "## Downloads" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "Prebuilt binaries for running \`decay\` without Docker (e.g. as a systemd service)." >> "$NOTES_FILE"
+          echo "The Linux binaries are statically linked (musl) and run on any modern x86-64/ARM64 Linux distro." >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "| Platform | Architecture | Asset |" >> "$NOTES_FILE"
+          echo "| --- | --- | --- |" >> "$NOTES_FILE"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${CACHE_SERVER_VERSION}"
+          echo "| Linux (musl) | x86-64 | [decay-x86_64-unknown-linux-musl](${DOWNLOAD_URL}/decay-x86_64-unknown-linux-musl) |" >> "$NOTES_FILE"
+          echo "| Linux (musl) | ARM64 | [decay-aarch64-unknown-linux-musl](${DOWNLOAD_URL}/decay-aarch64-unknown-linux-musl) |" >> "$NOTES_FILE"
+          echo "| macOS (universal) | Intel + Apple Silicon | [decay-universal-apple-darwin](${DOWNLOAD_URL}/decay-universal-apple-darwin) |" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "Verify a download against \`SHA256SUMS\`, e.g. \`sha256sum -c SHA256SUMS --ignore-missing\`." >> "$NOTES_FILE"
+
+          gh release create "${CACHE_SERVER_VERSION}" \
+            --title "${CACHE_SERVER_VERSION}" \
+            --notes-file "$NOTES_FILE" \
+            release-assets/decay-x86_64-unknown-linux-musl \
+            release-assets/decay-aarch64-unknown-linux-musl \
+            release-assets/decay-universal-apple-darwin \
+            release-assets/SHA256SUMS
+
+          rm -f "$NOTES_FILE"

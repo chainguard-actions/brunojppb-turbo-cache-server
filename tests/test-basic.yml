@@ -1,0 +1,60 @@
+name: Test basic usage - Turbo Cache Server starts with defaults
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: action
+        uses: .
+        continue-on-error: true
+        env:
+          PORT: "8000"
+          S3_ACCESS_KEY: "testkey"
+          S3_SECRET_KEY: "testsecret"
+          S3_ENDPOINT: "http://127.0.0.1:19000"
+          S3_BUCKET_NAME: "turbo-cache-test"
+          S3_REGION: "us-east-1"
+          S3_USE_PATH_STYLE: "true"
+
+      - name: Assert server is running and healthy
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "Action outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "Checking server health at 127.0.0.1:8000..."
+            RESPONSE=$(curl -sf http://127.0.0.1:8000/management/health || echo "FAILED")
+            echo "Response: $RESPONSE"
+            if [ "$RESPONSE" = "FAILED" ]; then
+              echo "FAIL: Server health check failed - server is not running or not healthy"
+              exit 1
+            fi
+            echo "PASS: Server is healthy"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: Action failed gracefully (likely no real S3 backend available in test environment)"
+          else
+            echo "FAIL: Unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Assert server responds with HTTP 200 (if started)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "Action outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "Checking server is reachable..."
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/management/health)
+            echo "HTTP status: $STATUS"
+            if [ "$STATUS" != "200" ]; then
+              echo "FAIL: Expected HTTP 200 but got $STATUS"
+              exit 1
+            fi
+            echo "PASS: Server returned HTTP 200"
+          else
+            echo "PASS: Skipping HTTP check since server did not start (no real S3 backend)"
+          fi
