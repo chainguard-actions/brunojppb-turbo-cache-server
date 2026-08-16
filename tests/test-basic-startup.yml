@@ -1,0 +1,36 @@
+name: Test basic startup
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: action
+        uses: .
+        env:
+          PORT: "8585"
+          HOST: "127.0.0.1"
+          # S3 credentials are not required for the server to start;
+          # it only connects to S3 when handling cache requests.
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "test-access-key"
+          S3_SECRET_KEY: "test-secret-key"
+          # Use a fake endpoint so the server doesn't try to reach real AWS
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          S3_USE_PATH_STYLE: "true"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert server is healthy
+        run: |
+          echo "Checking health endpoint at http://127.0.0.1:8585/management/health"
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:8585/management/health || echo "FAILED")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got '$STATUS'"
+            exit 1
+          fi
+          echo "PASS: server is healthy"

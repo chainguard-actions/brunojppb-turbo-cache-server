@@ -1,0 +1,122 @@
+name: Build binaries
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Docker image tag for the Linux build. Defaults to 'latest'."
+        type: string
+        required: false
+        default: "latest"
+      cache-ref:
+        description: "Registry ref used for --cache-to. Defaults to 'cache'."
+        type: string
+        required: false
+        default: "cache"
+    secrets:
+      DOCKER_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Update version on Cargo.toml
+        if: inputs.version != 'latest'
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${INPUT_VERSION}\"/" Cargo.toml
+
+      - name: login to Docker
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: brunojppb
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Read Rust version from rust-toolchain.toml
+        id: rust
+        run: echo "version=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: build binary
+        env:
+          RUST_VERSION: ${{ steps.rust.outputs.version }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CACHE_REF: ${{ inputs.cache-ref }}
+        run: |
+          docker pull --platform linux/arm64 brunojppb/turbo-cache-server-build:latest || true
+          docker pull --platform linux/amd64 brunojppb/turbo-cache-server-build:latest || true
+          docker buildx build --build-arg RUST_VERSION="$RUST_VERSION" --platform linux/arm64,linux/amd64 --tag "brunojppb/turbo-cache-server-build:${INPUT_VERSION}" --push --cache-to "type=registry,ref=brunojppb/turbo-cache-server-build:${INPUT_CACHE_REF}" --cache-from type=registry,ref=brunojppb/turbo-cache-server-build:latest .
+
+      - name: create temp containers to copy binaries from
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          docker pull "brunojppb/turbo-cache-server-build:${INPUT_VERSION}"
+          docker create --name dist_arm64 --platform arm64 "brunojppb/turbo-cache-server-build:${INPUT_VERSION}"
+          docker create --name dist_x64 --platform amd64 "brunojppb/turbo-cache-server-build:${INPUT_VERSION}"
+
+      - name: copy arm64 binary
+        run: |
+          mkdir out && \
+          docker cp dist_arm64:/usr/bin/decay out/decay-arm64
+
+      - name: copy x64 binary
+        run: |
+          docker cp dist_x64:/usr/bin/decay out/decay-x64
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: linux-binaries
+          path: |
+            out/decay-arm64
+            out/decay-x64
+
+  build-macos:
+    name: Build macOS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Update version on Cargo.toml
+        if: inputs.version != 'latest'
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${INPUT_VERSION}\"/" Cargo.toml
+
+      - name: Read Rust version from rust-toolchain.toml
+        id: rust
+        run: echo "version=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: build macOS binary
+        env:
+          RUST_VERSION: ${{ steps.rust.outputs.version }}
+        run: |
+          docker buildx build --build-arg RUST_VERSION="$RUST_VERSION" --target macos-builder --tag turbo-cache-macos-build --load .
+
+      - name: copy macOS binary
+        run: |
+          mkdir out && \
+          docker create --name dist_macos turbo-cache-macos-build
+          docker cp dist_macos:/app/decay-darwin-universal out/decay-darwin-universal
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-binaries
+          path: |
+            out/decay-darwin-universal

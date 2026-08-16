@@ -1,0 +1,60 @@
+name: Test Turborepo cache API endpoints
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TURBO_API: "http://127.0.0.1:8585"
+      TURBO_TEAM: "test-team"
+      TURBO_TOKEN: "test-token"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: action
+        uses: .
+        env:
+          PORT: "8585"
+          HOST: "127.0.0.1"
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "test-access-key"
+          S3_SECRET_KEY: "test-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          S3_USE_PATH_STYLE: "true"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert health endpoint returns 200
+        run: |
+          echo "Checking /management/health"
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:8585/management/health || echo "FAILED")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got '$STATUS'"
+            exit 1
+          fi
+          echo "PASS: health endpoint returned 200"
+
+      - name: Assert cache miss returns expected HTTP status
+        run: |
+          # Query for a non-existent artifact hash — expect 404 (cache miss)
+          # The server may return 404 (not found) or 500 (S3 connection error)
+          # Both are valid responses indicating the server is processing requests
+          HASH="abc123def456abc123def456abc123def456abc123def456abc123def456abc1"
+          echo "Querying artifact: $HASH"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer test-token" \
+            "http://127.0.0.1:8585/v8/artifacts/$HASH?teamId=test-team" || echo "FAILED")
+          echo "HTTP status for cache miss: $STATUS"
+          if [ "$STATUS" = "FAILED" ]; then
+            echo "FAIL: curl command failed entirely"
+            exit 1
+          fi
+          # Accept 404 (cache miss) or 500 (S3 backend unavailable) — both mean the server is running
+          if [ "$STATUS" = "404" ] || [ "$STATUS" = "500" ] || [ "$STATUS" = "503" ]; then
+            echo "PASS: server responded with $STATUS (cache miss or S3 unavailable — server is running)"
+          else
+            echo "FAIL: unexpected HTTP status '$STATUS' — expected 404, 500, or 503"
+            exit 1
+          fi

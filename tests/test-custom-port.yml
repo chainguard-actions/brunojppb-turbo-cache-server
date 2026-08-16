@@ -1,0 +1,44 @@
+name: Test custom port configuration
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server on custom port
+        id: action
+        uses: .
+        env:
+          PORT: "9090"
+          HOST: "127.0.0.1"
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "eu-central-1"
+          S3_ACCESS_KEY: "test-access-key"
+          S3_SECRET_KEY: "test-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          S3_USE_PATH_STYLE: "true"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert server is healthy on custom port 9090
+        run: |
+          echo "Checking health endpoint at http://127.0.0.1:9090/management/health"
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:9090/management/health || echo "FAILED")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint on port 9090, got '$STATUS'"
+            exit 1
+          fi
+          echo "PASS: server is healthy on custom port 9090"
+
+      - name: Assert server is NOT listening on default port 8000
+        run: |
+          echo "Verifying server is not on default port 8000"
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/management/health 2>/dev/null || echo "FAILED")
+          echo "HTTP status on port 8000: $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "FAIL: server should not be listening on default port 8000"
+            exit 1
+          fi
+          echo "PASS: server is not on default port 8000 (as expected)"
