@@ -1,0 +1,58 @@
+name: Test authentication token
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server with auth token
+        id: action
+        uses: .
+        env:
+          PORT: "8686"
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "fake-access-key"
+          S3_SECRET_KEY: "fake-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          TURBO_TOKEN: "my-secret-token"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert health endpoint is accessible without auth
+        run: |
+          echo "Health endpoint should be accessible without auth"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8686/management/health)
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got $HTTP_STATUS"
+            exit 1
+          fi
+          echo "PASS: health endpoint is accessible"
+
+      - name: Assert API endpoint rejects requests without token
+        run: |
+          echo "API endpoint should reject requests without Authorization header"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8686/v8/artifacts/status)
+          echo "HTTP status without token: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "FAIL: expected non-200 response without auth token, got $HTTP_STATUS"
+            exit 1
+          fi
+          echo "PASS: API endpoint rejected unauthenticated request (status: $HTTP_STATUS)"
+
+      - name: Assert API endpoint accepts requests with valid token
+        run: |
+          echo "API endpoint should accept requests with valid Authorization header"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer my-secret-token" \
+            http://127.0.0.1:8686/v8/artifacts/status)
+          echo "HTTP status with valid token: $HTTP_STATUS"
+          # 200 means authenticated and status returned; other 2xx or even 4xx for missing
+          # artifact data is acceptable — what matters is NOT 401
+          if [ "$HTTP_STATUS" = "401" ]; then
+            echo "FAIL: expected non-401 response with valid auth token, got $HTTP_STATUS"
+            exit 1
+          fi
+          echo "PASS: API endpoint accepted authenticated request (status: $HTTP_STATUS)"

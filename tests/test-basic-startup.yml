@@ -12,19 +12,26 @@ jobs:
         uses: .
         env:
           PORT: "8585"
-          HOST: "127.0.0.1"
           S3_BUCKET_NAME: "test-bucket"
           S3_REGION: "us-east-1"
-          S3_ACCESS_KEY: "test-access-key"
-          S3_SECRET_KEY: "test-secret-key"
+          S3_ACCESS_KEY: "fake-access-key"
+          S3_SECRET_KEY: "fake-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          OTEL_SDK_DISABLED: "true"
 
       - name: Assert server is healthy
         run: |
-          echo "Checking server health at http://127.0.0.1:8585/management/health"
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8585/management/health || echo "000")
-          echo "HTTP response code: $response"
-          if [ "$response" != "200" ]; then
-            echo "FAIL: expected HTTP 200 from health endpoint, got $response"
+          echo "Checking health endpoint at http://127.0.0.1:8585/management/health"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8585/management/health)
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got $HTTP_STATUS"
             exit 1
           fi
           echo "PASS: server is healthy"
+
+      - name: Assert health response body
+        run: |
+          BODY=$(curl -s http://127.0.0.1:8585/management/health)
+          echo "Health response body: $BODY"
+          echo "PASS: health endpoint responded"

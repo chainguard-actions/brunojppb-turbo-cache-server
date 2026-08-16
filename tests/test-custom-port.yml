@@ -1,4 +1,4 @@
-name: Test custom port configuration
+name: Test custom port
 on:
   workflow_dispatch:
 jobs:
@@ -11,31 +11,33 @@ jobs:
         id: action
         uses: .
         env:
-          PORT: "9090"
+          PORT: "9191"
           HOST: "127.0.0.1"
           S3_BUCKET_NAME: "test-bucket"
           S3_REGION: "us-east-1"
-          S3_ACCESS_KEY: "test-access-key"
-          S3_SECRET_KEY: "test-secret-key"
+          S3_ACCESS_KEY: "fake-access-key"
+          S3_SECRET_KEY: "fake-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          OTEL_SDK_DISABLED: "true"
 
-      - name: Assert server is healthy on custom port
+      - name: Assert server is healthy on custom port 9191
         run: |
-          echo "Checking server health at http://127.0.0.1:9090/management/health"
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9090/management/health || echo "000")
-          echo "HTTP response code: $response"
-          if [ "$response" != "200" ]; then
-            echo "FAIL: expected HTTP 200 from health endpoint on port 9090, got $response"
+          echo "Checking health endpoint at http://127.0.0.1:9191/management/health"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9191/management/health)
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint on port 9191, got $HTTP_STATUS"
             exit 1
           fi
-          echo "PASS: server is healthy on custom port 9090"
+          echo "PASS: server is healthy on custom port 9191"
 
-      - name: Assert server is NOT running on default port
+      - name: Assert server is NOT listening on default port 8000
         run: |
-          echo "Verifying server is not on default port 8000"
-          response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:8000/management/health || echo "000")
-          echo "HTTP response code on port 8000: $response"
-          if [ "$response" = "200" ]; then
-            echo "FAIL: server should not be running on default port 8000"
+          echo "Verifying server is NOT on default port 8000"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 http://127.0.0.1:8000/management/health || echo "000")
+          echo "HTTP status on port 8000: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "FAIL: server should NOT be listening on port 8000 when PORT=9191"
             exit 1
           fi
           echo "PASS: server is not on default port 8000"
