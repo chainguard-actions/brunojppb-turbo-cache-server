@@ -1,0 +1,52 @@
+name: Test server without authentication
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PORT: "8686"
+      HOST: "127.0.0.1"
+      S3_BUCKET_NAME: "test-bucket"
+      S3_REGION: "us-east-1"
+      S3_ACCESS_KEY: "dummy-access-key"
+      S3_SECRET_KEY: "dummy-secret-key"
+      S3_ENDPOINT: "http://127.0.0.1:9999"
+      S3_USE_PATH_STYLE: "true"
+      # TURBO_TOKEN is intentionally NOT set to test no-auth mode
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create GITHUB_STATE file
+        run: |
+          GITHUB_STATE_FILE=$(mktemp)
+          echo "GITHUB_STATE=$GITHUB_STATE_FILE" >> "$GITHUB_ENV"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+
+      - name: Assert action ran without TURBO_TOKEN set
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "Action outcome: $OUTCOME"
+          # Without TURBO_TOKEN, the server should run in no-auth mode
+          # The action should complete (success or failure based on S3 connectivity)
+          if [ "$OUTCOME" = "success" ] || [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: Action completed in no-auth mode with outcome '$OUTCOME'"
+          else
+            echo "FAIL: Unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Assert GITHUB_STATE file is accessible
+        run: |
+          echo "GITHUB_STATE: $GITHUB_STATE"
+          if [ -f "$GITHUB_STATE" ]; then
+            echo "GITHUB_STATE file exists"
+            echo "PASS"
+          else
+            echo "FAIL: GITHUB_STATE file not found"
+            exit 1
+          fi

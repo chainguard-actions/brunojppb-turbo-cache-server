@@ -1,0 +1,118 @@
+name: Test health endpoint response
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Prepare environment
+        run: |
+          # Ensure the binary is executable
+          chmod +x action/action/decay-x64 action/action/decay-arm64 \
+            action/action/decay-darwin-universal || true
+          # Bypass macOS Gatekeeper if on macOS
+          if [ "$(uname)" = "Darwin" ]; then
+            xattr -d com.apple.quarantine action/action/decay-darwin-universal || true
+          fi
+          # Create logs directory so the server can write logs
+          mkdir -p /tmp/decay_logs
+          # Pre-create the log file so post step can always read it
+          touch /tmp/decay_logs/decay.log
+          # Verify node is available
+          node --version
+          # Check architecture
+          uname -m
+          echo "Node arch: $(node -e 'console.log(process.arch)')"
+
+      - name: Start MinIO S3-compatible storage
+        run: |
+          # Detect OS and architecture for MinIO binary
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) MINIO_ARCH="amd64" ;;
+            aarch64|arm64) MINIO_ARCH="arm64" ;;
+            *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+          esac
+          case "$OS" in
+            linux) MINIO_OS="linux" ;;
+            darwin) MINIO_OS="darwin" ;;
+            *) echo "Unsupported OS: $OS"; exit 1 ;;
+          esac
+          echo "Downloading MinIO for ${MINIO_OS}-${MINIO_ARCH}..."
+          curl -fsSL "https://dl.min.io/server/minio/release/${MINIO_OS}-${MINIO_ARCH}/minio" \
+            -o /tmp/minio
+          chmod +x /tmp/minio
+          # Create data directory
+          mkdir -p /tmp/minio-data
+          # Start MinIO in background
+          MINIO_ROOT_USER=minioadmin \
+          MINIO_ROOT_PASSWORD=minioadmin \
+          /tmp/minio server /tmp/minio-data \
+            --address 127.0.0.1:9000 \
+            --console-address 127.0.0.1:9001 \
+            > /tmp/minio.log 2>&1 &
+          echo "MinIO PID: $!"
+          # Wait for MinIO to be ready
+          echo "Waiting for MinIO to start..."
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/minio/health/live > /dev/null 2>&1; then
+              echo "MinIO is ready after $i attempts"
+              break
+            fi
+            echo "Attempt $i: MinIO not ready yet..."
+            sleep 2
+          done
+          # Verify MinIO is running
+          if ! curl -sf http://127.0.0.1:9000/minio/health/live > /dev/null 2>&1; then
+            echo "ERROR: MinIO failed to start"
+            cat /tmp/minio.log || true
+            exit 1
+          fi
+          # Create bucket using AWS CLI
+          AWS_ACCESS_KEY_ID=minioadmin \
+          AWS_SECRET_ACCESS_KEY=minioadmin \
+          AWS_DEFAULT_REGION=eu-central-1 \
+          aws s3 mb s3://turbo-cache \
+            --endpoint-url http://127.0.0.1:9000 2>&1 || true
+          echo "MinIO setup complete"
+
+      - name: Start Turbo Cache Server
+        id: action
+        uses: .
+        env:
+          PORT: "8100"
+          HOST: "127.0.0.1"
+          OTEL_SDK_DISABLED: "true"
+          S3_BUCKET_NAME: "turbo-cache"
+          S3_REGION: "eu-central-1"
+          S3_ACCESS_KEY: "minioadmin"
+          S3_SECRET_KEY: "minioadmin"
+          S3_ENDPOINT: "http://127.0.0.1:9000"
+          S3_USE_PATH_STYLE: "true"
+
+      - name: Assert health endpoint returns HTTP 200
+        run: |
+          echo "Querying health endpoint..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8100/management/health)
+          echo "HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "FAIL: expected HTTP 200 but got $HTTP_CODE"
+            exit 1
+          fi
+          echo "PASS: health endpoint returned HTTP 200"
+
+      - name: Assert health endpoint is consistently reachable
+        run: |
+          echo "Verifying health endpoint is consistently reachable..."
+          for i in 1 2 3; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8100/management/health)
+            echo "Attempt $i: HTTP status $HTTP_CODE"
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "FAIL: health endpoint returned $HTTP_CODE on attempt $i"
+              exit 1
+            fi
+          done
+          echo "PASS: health endpoint is consistently available"

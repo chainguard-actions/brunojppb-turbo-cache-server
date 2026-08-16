@@ -1,0 +1,13 @@
+{
+  "status": "self_contained",
+  "entries": [
+    {
+      "path": "action/main.mjs",
+      "status": "self_contained"
+    },
+    {
+      "path": "action/post.mjs",
+      "status": "self_contained"
+    }
+  ]
+}
