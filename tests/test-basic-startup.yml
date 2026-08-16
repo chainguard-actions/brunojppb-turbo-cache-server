@@ -1,0 +1,45 @@
+name: Test basic startup
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: cache-server
+        uses: .
+        env:
+          PORT: "8585"
+          HOST: "127.0.0.1"
+          # Provide minimal S3 config so the server binary can start
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "test-access-key"
+          S3_SECRET_KEY: "test-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          # Disable OpenTelemetry to avoid connection attempts
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert server is healthy
+        run: |
+          echo "Checking health endpoint at http://127.0.0.1:8585/management/health"
+          RESPONSE=$(curl -sf http://127.0.0.1:8585/management/health || echo "FAILED")
+          echo "Response: $RESPONSE"
+          if [ "$RESPONSE" = "FAILED" ]; then
+            echo "FAIL: health endpoint did not respond"
+            exit 1
+          fi
+          echo "PASS: server is healthy"
+
+      - name: Assert server responds to API endpoint
+        run: |
+          echo "Checking that server is listening on port 8585"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8585/management/health || echo "000")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: expected HTTP 200 from health endpoint, got $STATUS"
+            exit 1
+          fi
+          echo "PASS: server returned HTTP 200"

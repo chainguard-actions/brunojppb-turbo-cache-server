@@ -1,0 +1,52 @@
+name: Test cache miss response
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server
+        id: cache-server
+        uses: .
+        env:
+          PORT: "8686"
+          HOST: "127.0.0.1"
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "test-access-key"
+          S3_SECRET_KEY: "test-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert health endpoint returns 200
+        run: |
+          echo "Verifying server is up at port 8686"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8686/management/health || echo "000")
+          echo "Health status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: health endpoint returned $STATUS, expected 200"
+            exit 1
+          fi
+          echo "PASS: health check passed"
+
+      - name: Assert cache miss returns non-200 for unknown artifact
+        run: |
+          echo "Requesting a non-existent artifact from the Turborepo cache API"
+          # The Turborepo cache API endpoint for artifact retrieval
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer test-token" \
+            "http://127.0.0.1:8686/v8/artifacts/nonexistent-hash-abc123?teamId=test-team" \
+            || echo "000")
+          echo "Cache miss status: $STATUS"
+          # A cache miss should return 404 (not found) or similar non-200 response
+          if [ "$STATUS" = "200" ]; then
+            echo "FAIL: expected non-200 for non-existent artifact, got 200"
+            exit 1
+          fi
+          if [ "$STATUS" = "000" ]; then
+            echo "FAIL: could not connect to server"
+            exit 1
+          fi
+          echo "PASS: server correctly returned $STATUS for non-existent artifact"

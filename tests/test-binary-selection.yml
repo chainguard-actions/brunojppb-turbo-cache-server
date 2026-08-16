@@ -1,0 +1,104 @@
+name: Test binary selection for Linux x64
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify Linux x64 binary exists and is executable
+        run: |
+          echo "Checking that the Linux x64 binary exists and is executable"
+          BINARY_PATH="$GITHUB_WORKSPACE/action/decay-x64"
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "FAIL: Binary not found at $BINARY_PATH"
+            exit 1
+          fi
+          if [ ! -x "$BINARY_PATH" ]; then
+            echo "FAIL: Binary is not executable at $BINARY_PATH"
+            exit 1
+          fi
+          echo "PASS: Binary exists and is executable at $BINARY_PATH"
+
+      - name: Verify Linux arm64 binary exists and is executable
+        run: |
+          echo "Checking that the Linux arm64 binary exists and is executable"
+          BINARY_PATH="$GITHUB_WORKSPACE/action/decay-arm64"
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "FAIL: Binary not found at $BINARY_PATH"
+            exit 1
+          fi
+          if [ ! -x "$BINARY_PATH" ]; then
+            echo "FAIL: Binary is not executable at $BINARY_PATH"
+            exit 1
+          fi
+          echo "PASS: arm64 binary exists and is executable at $BINARY_PATH"
+
+      - name: Verify macOS universal binary exists and is executable
+        run: |
+          echo "Checking that the macOS universal binary exists and is executable"
+          BINARY_PATH="$GITHUB_WORKSPACE/action/decay-darwin-universal"
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "FAIL: Binary not found at $BINARY_PATH"
+            exit 1
+          fi
+          if [ ! -x "$BINARY_PATH" ]; then
+            echo "FAIL: Binary is not executable at $BINARY_PATH"
+            exit 1
+          fi
+          echo "PASS: macOS universal binary exists and is executable at $BINARY_PATH"
+
+      - name: Verify action scripts exist
+        run: |
+          echo "Checking that main.mjs, post.mjs, and util.mjs exist"
+          MAIN_PATH="$GITHUB_WORKSPACE/action/main.mjs"
+          POST_PATH="$GITHUB_WORKSPACE/action/post.mjs"
+          UTIL_PATH="$GITHUB_WORKSPACE/action/util.mjs"
+
+          for f in "$MAIN_PATH" "$POST_PATH" "$UTIL_PATH"; do
+            if [ ! -f "$f" ]; then
+              echo "FAIL: Script not found at $f"
+              exit 1
+            fi
+            echo "OK: $f"
+          done
+          echo "PASS: All action scripts present"
+
+      - name: Verify util.mjs contains getBinaryName function
+        run: |
+          UTIL_PATH="$GITHUB_WORKSPACE/action/util.mjs"
+          if ! grep -q 'getBinaryName' "$UTIL_PATH"; then
+            echo "FAIL: util.mjs does not contain getBinaryName function"
+            exit 1
+          fi
+          echo "PASS: util.mjs contains getBinaryName function"
+
+      - name: Verify util.mjs handles Linux platform
+        run: |
+          UTIL_PATH="$GITHUB_WORKSPACE/action/util.mjs"
+          if ! grep -q '"linux"' "$UTIL_PATH"; then
+            echo "FAIL: util.mjs does not handle linux platform"
+            exit 1
+          fi
+          echo "PASS: util.mjs handles linux platform"
+
+      - name: Verify util.mjs handles darwin platform
+        run: |
+          UTIL_PATH="$GITHUB_WORKSPACE/action/util.mjs"
+          if ! grep -q '"darwin"' "$UTIL_PATH"; then
+            echo "FAIL: util.mjs does not handle darwin platform"
+            exit 1
+          fi
+          echo "PASS: util.mjs handles darwin platform"
+
+      - name: Verify action.yml declares node24 runtime
+        run: |
+          echo "Checking action.yml runtime"
+          ACTION_YML="$GITHUB_WORKSPACE/action.yml"
+          if ! grep -q 'node24' "$ACTION_YML"; then
+            echo "FAIL: action.yml does not declare node24 runtime"
+            cat "$ACTION_YML"
+            exit 1
+          fi
+          echo "PASS: action.yml declares node24 runtime"
