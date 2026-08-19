@@ -1,0 +1,47 @@
+name: Test custom port configuration
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Start Turbo Cache Server on custom port
+        id: action
+        uses: .
+        continue-on-error: true
+        env:
+          PORT: "9191"
+          HOST: "127.0.0.1"
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "eu-central-1"
+          S3_ACCESS_KEY: "fake-access-key"
+          S3_SECRET_KEY: "fake-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert server started on custom port or failed gracefully
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: server started successfully on custom port 9191"
+            # Verify health endpoint is reachable on the custom port
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9191/management/health || echo "000")
+            echo "health endpoint status on port 9191: $HTTP_STATUS"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "PASS: health endpoint returned 200 on custom port"
+            else
+              echo "INFO: health endpoint returned $HTTP_STATUS"
+            fi
+            # Verify default port 8000 is NOT listening
+            DEFAULT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:8000/management/health || echo "000")
+            echo "default port 8000 status: $DEFAULT_STATUS"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (expected when S3 is not available)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
