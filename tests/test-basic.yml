@@ -1,0 +1,46 @@
+name: Test basic usage - start server on default port
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: start-server
+        name: Start Turbo Cache Server
+        uses: .
+        env:
+          HOST: "127.0.0.1"
+          PORT: "8000"
+          # Provide dummy S3 credentials so the server can initialize
+          # without falling back to Credentials::default() which may panic
+          S3_ACCESS_KEY: "dummy-access-key"
+          S3_SECRET_KEY: "dummy-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          S3_BUCKET_NAME: "turbo-test"
+          S3_REGION: "us-east-1"
+          S3_USE_PATH_STYLE: "true"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert server is running and healthy
+        run: |
+          echo "Checking server health at 127.0.0.1:8000..."
+          RESPONSE=$(curl -sf http://127.0.0.1:8000/management/health || echo "FAILED")
+          echo "Response: $RESPONSE"
+          if [ "$RESPONSE" = "FAILED" ]; then
+            echo "FAIL: Server health check failed"
+            exit 1
+          fi
+          echo "PASS: Server is healthy"
+
+      - name: Assert server responds with HTTP 200
+        run: |
+          echo "Checking HTTP status code..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/management/health)
+          echo "HTTP status code: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "FAIL: Expected HTTP 200 but got $HTTP_CODE"
+            exit 1
+          fi
+          echo "PASS: Server returned HTTP 200"

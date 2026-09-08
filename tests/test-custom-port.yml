@@ -1,0 +1,46 @@
+name: Test custom port - start server on non-default port
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: start-server
+        name: Start Turbo Cache Server on custom port
+        uses: .
+        env:
+          HOST: "127.0.0.1"
+          PORT: "9000"
+          # Provide dummy S3 credentials so the server can initialize
+          # without falling back to Credentials::default() which may panic
+          S3_ACCESS_KEY: "dummy-access-key"
+          S3_SECRET_KEY: "dummy-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:19999"
+          S3_BUCKET_NAME: "turbo-test"
+          S3_REGION: "us-east-1"
+          S3_USE_PATH_STYLE: "true"
+          OTEL_SDK_DISABLED: "true"
+
+      - name: Assert server is running on custom port 9000
+        run: |
+          echo "Checking server health at 127.0.0.1:9000..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9000/management/health)
+          echo "HTTP status code: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "FAIL: Expected HTTP 200 on port 9000 but got $HTTP_CODE"
+            exit 1
+          fi
+          echo "PASS: Server is healthy on custom port 9000"
+
+      - name: Assert server is NOT running on default port 8000
+        run: |
+          echo "Verifying server is NOT on default port 8000..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 http://127.0.0.1:8000/management/health || echo "000")
+          echo "HTTP status code on port 8000: $HTTP_CODE"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "FAIL: Server unexpectedly responded on default port 8000"
+            exit 1
+          fi
+          echo "PASS: Server is not on default port 8000 (as expected)"
