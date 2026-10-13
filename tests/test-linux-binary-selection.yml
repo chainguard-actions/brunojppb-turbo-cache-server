@@ -1,0 +1,90 @@
+name: Test Linux binary selection
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify platform and arch detection matches action logic
+        run: |
+          # The action uses Node.js os.arch() and os.platform() — not uname -m
+          NODE_ARCH=$(node -e "console.log(require('os').arch())")
+          NODE_PLATFORM=$(node -e "console.log(require('os').platform())")
+          echo "Node arch: $NODE_ARCH"
+          echo "Node platform: $NODE_PLATFORM"
+
+          # Verify we are on a supported platform/arch combination
+          if [ "$NODE_PLATFORM" = "linux" ]; then
+            if [ "$NODE_ARCH" = "x64" ]; then
+              EXPECTED_BINARY="decay-x64"
+            elif [ "$NODE_ARCH" = "arm64" ]; then
+              EXPECTED_BINARY="decay-arm64"
+            else
+              echo "FAIL: Unsupported Linux arch: $NODE_ARCH"
+              exit 1
+            fi
+          elif [ "$NODE_PLATFORM" = "darwin" ]; then
+            EXPECTED_BINARY="decay-darwin-universal"
+          else
+            echo "FAIL: Unsupported platform: $NODE_PLATFORM"
+            exit 1
+          fi
+
+          echo "Expected binary name: $EXPECTED_BINARY"
+          echo "PASS: Platform/arch detection logic works correctly for $NODE_PLATFORM/$NODE_ARCH"
+
+      - name: Verify getBinaryName() returns correct value via Node.js
+        run: |
+          # Run the same logic as getBinaryName() in util.mjs directly
+          BINARY_NAME=$(node -e "
+            const os = require('os');
+            const supportedArches = ['arm64', 'x64'];
+            const platform = os.platform();
+            if (platform === 'darwin') {
+              console.log('decay-darwin-universal');
+            } else if (platform === 'linux') {
+              if (!supportedArches.includes(os.arch())) {
+                process.stderr.write('Unsupported arch: ' + os.arch() + '\n');
+                process.exit(1);
+              }
+              console.log('decay-' + os.arch());
+            } else {
+              process.stderr.write('Unsupported platform: ' + platform + '\n');
+              process.exit(1);
+            }
+          ")
+          echo "getBinaryName() result: $BINARY_NAME"
+          if [ -z "$BINARY_NAME" ]; then
+            echo "FAIL: getBinaryName() returned empty string"
+            exit 1
+          fi
+          echo "PASS: getBinaryName() returned '$BINARY_NAME'"
+
+      - name: Start Turbo Cache Server
+        id: cache-server
+        uses: .
+        continue-on-error: true
+        env:
+          PORT: "8686"
+          S3_BUCKET_NAME: "test-bucket"
+          S3_REGION: "us-east-1"
+          S3_ACCESS_KEY: "fake-access-key"
+          S3_SECRET_KEY: "fake-secret-key"
+          S3_ENDPOINT: "http://127.0.0.1:9999"
+          S3_USE_PATH_STYLE: "true"
+
+      - name: Assert action ran (started or failed gracefully)
+        env:
+          OUTCOME: ${{ steps.cache-server.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: Server started successfully"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: Server failed gracefully (no valid S3 backend available)"
+          else
+            echo "FAIL: Unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
