@@ -1,0 +1,54 @@
+name: "turbo_cache_server_otel"
+
+services:
+  s3_bucket:
+    image: rustfs/rustfs:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - s3_data:/data
+      - s3_logs:/logs
+    command:
+      - --address
+      - :9000
+      - --console-enable
+      - --access-key
+      - rustfsadmin
+      - --secret-key
+      - rustfsadmin
+      - /data
+
+  # Observability
+  collector:
+    image: otel/opentelemetry-collector:0.163.2@sha256:63e5e8eccf4268be02388ba9f2dc36b80b5e47721291293411c0e83152d75bda
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml
+    ports:
+      - "4317:4317" # OTELP GRPC
+      - "4318:4318" # OTELP HTTP
+
+  prometheus:
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+    ports:
+      - "9090:9090"
+
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17
+    ports:
+      - "4317" # OTELP GRPC
+      - "4318" # OTELP HTTP
+      - "16686:16686" # Jaeger UI
+
+volumes:
+  s3_data:
+  s3_logs:
+  
