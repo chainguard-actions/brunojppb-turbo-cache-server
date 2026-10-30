@@ -1,0 +1,52 @@
+name: Test basic usage (custom port)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        env:
+          PORT: "8585"
+          S3_BUCKET_NAME: test-bucket
+          S3_REGION: eu-central-1
+          S3_ACCESS_KEY: test-access-key
+          S3_SECRET_KEY: test-secret-key
+          S3_ENDPOINT: http://127.0.0.1:9000
+          S3_USE_PATH_STYLE: "true"
+      - name: Assert step succeeded
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert server is healthy on port 8585
+        run: |
+          code=$(curl -s -o /tmp/health.txt -w '%{http_code}' http://127.0.0.1:8585/management/health || true)
+          echo "http code: $code"
+          cat /tmp/health.txt || true
+          if [ "$code" != "200" ]; then
+            echo "FAIL: expected 200 from health endpoint"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert logs directory created
+        run: |
+          LOGDIR="${RUNNER_TEMP:-/tmp}"
+          found=""
+          for d in /tmp/decay_logs "$(node -e 'console.log(require("os").tmpdir())')/decay_logs"; do
+            if [ -d "$d" ]; then found="$d"; fi
+          done
+          echo "logs dir: $found"
+          if [ -z "$found" ]; then
+            echo "FAIL: decay_logs directory not found"
+            exit 1
+          fi
+          ls -la "$found"
+          echo "PASS"

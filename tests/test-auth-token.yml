@@ -1,0 +1,46 @@
+name: Test server-side TURBO_TOKEN authentication
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        env:
+          PORT: "8686"
+          TURBO_TOKEN: secret-turbo-token
+          S3_BUCKET_NAME: test-bucket
+          S3_ACCESS_KEY: test-access-key
+          S3_SECRET_KEY: test-secret-key
+          S3_ENDPOINT: http://127.0.0.1:9000
+      - name: Assert health endpoint reachable
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8686/management/health || true)
+          echo "http code: $code"
+          if [ "$code" != "200" ]; then
+            echo "FAIL: expected 200 from health endpoint"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert artifact request without token is rejected
+        run: |
+          code=$(curl -s -o /tmp/body.txt -w '%{http_code}' "http://127.0.0.1:8686/v8/artifacts/abc123?teamId=team" || true)
+          echo "http code: $code"
+          cat /tmp/body.txt || true
+          if [ "$code" != "401" ]; then
+            echo "FAIL: expected 401 without Authorization header"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert artifact request with wrong token is rejected
+        run: |
+          code=$(curl -s -o /tmp/body2.txt -w '%{http_code}' -H "Authorization: Bearer wrong-token" "http://127.0.0.1:8686/v8/artifacts/abc123?teamId=team" || true)
+          echo "http code: $code"
+          cat /tmp/body2.txt || true
+          if [ "$code" != "401" ]; then
+            echo "FAIL: expected 401 with wrong token"
+            exit 1
+          fi
+          echo "PASS"
