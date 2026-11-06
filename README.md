@@ -26,6 +26,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | 4.0.8 | [`4.0.8`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.8) | [`54dea55`](https://github.com/brunojppb/turbo-cache-server/commit/54dea557e25e9702d03960afaa627858e0286559) | [`HARDENING.md`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/blob/4.0.8/HARDENING.md) |
 | 4.0.9 | [`4.0.9`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/4.0.9) | [`72a2719`](https://github.com/brunojppb/turbo-cache-server/commit/72a271963c4b6ba4895bf8586a296e8e00cbac7d) | [`HARDENING.md`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/blob/4.0.9/HARDENING.md) |
 | 5.0.0 | [`5.0.0`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/5.0.0) | [`7a089b8`](https://github.com/brunojppb/turbo-cache-server/commit/7a089b8e7cf1579794644119a3561bbb1314c946) | [`HARDENING.md`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/blob/5.0.0/HARDENING.md) |
+| 5.0.1 | [`5.0.1`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/tree/5.0.1) | [`90d586b`](https://github.com/brunojppb/turbo-cache-server/commit/90d586b69d764b9e4d3708cab55c04d1bebc5d84) | [`HARDENING.md`](https://github.com/chainguard-actions/brunojppb-turbo-cache-server/blob/5.0.1/HARDENING.md) |
 
 ## Privacy
 
